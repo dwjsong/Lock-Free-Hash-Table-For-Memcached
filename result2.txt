@@ -1,0 +1,4 @@
+19c19
+<                     trace.h cache.h sasl_defs.h
+---
+>                     trace.h cache.h sasl_defs.h hashtable.c

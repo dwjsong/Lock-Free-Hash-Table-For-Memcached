@@ -1,0 +1,18 @@
+75c75
+< 	sasl_defs.h cache.c solaris_priv.c sasl_defs.c
+---
+> 	sasl_defs.h cache.c solaris_priv.c sasl_defs.c hashtable.c
+90,91c90,91
+< 	cache.h sasl_defs.h cache.c solaris_priv.c sasl_defs.c
+< @BUILD_CACHE_TRUE@am__objects_4 = memcached_debug-cache.$(OBJEXT)
+---
+> 	cache.h sasl_defs.h cache.c solaris_priv.c sasl_defs.c hashtable.c
+> BUILD_CACHE_TRUE@am__objects_4 = memcached_debug-cache.$(OBJEXT)
+315c315
+< 	stats.c stats.h util.c util.h trace.h cache.h sasl_defs.h \
+---
+> 	stats.c stats.h util.c util.h trace.h cache.h sasl_defs.h hashtable.c \
+503a504,506
+> 
+> lfhash.o: hashtable.c
+> @am__fastdepCC_TRUE@   $(CC) -Wall -Werror -std=gnu99 -pthread  -g -O3 -Inbds.0.4.3/include -MM -MT nbds.0.4.3/runtime/runtime.c nbds.0.4.3/runtime/rcu.c nbds.0.4.3/runtime/lwt.c nbds.0.4.3/runtime/mem.c nbds.0.4.3/datatype/nstring.c  nbds.0.4.3/map/map.c nbds.0.4.3/map/list.c nbds.0.4.3/map/skiplist.c nbds.0.4.3/map/hashtable.c -o lf-hash.o
