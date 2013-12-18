@@ -495,9 +495,9 @@ item *item_get(const char *key, const size_t nkey) {
     item *it;
     uint32_t hv;
     hv = hash(key, nkey, 0);
-    item_lock(hv);
+//    item_lock(hv);
     it = do_item_get(key, nkey, hv);
-    item_unlock(hv);
+//    item_unlock(hv);
     return it;
 }
 
@@ -505,9 +505,9 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime) {
     item *it;
     uint32_t hv;
     hv = hash(key, nkey, 0);
-    item_lock(hv);
+//    item_lock(hv);
     it = do_item_touch(key, nkey, exptime, hv);
-    item_unlock(hv);
+//    item_unlock(hv);
     return it;
 }
 
@@ -519,9 +519,9 @@ int item_link(item *item) {
     uint32_t hv;
 
     hv = hash(ITEM_key(item), item->nkey, 0);
-    item_lock(hv);
+//    item_lock(hv);
     ret = do_item_link(item, hv);
-    item_unlock(hv);
+//    item_unlock(hv);
     return ret;
 }
 
@@ -533,9 +533,9 @@ void item_remove(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
 
-    item_lock(hv);
+//    item_lock(hv);
     do_item_remove(item);
-    item_unlock(hv);
+//    item_unlock(hv);
 }
 
 /*
@@ -553,9 +553,9 @@ int item_replace(item *old_it, item *new_it, const uint32_t hv) {
 void item_unlink(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
-    item_lock(hv);
+//    item_lock(hv);
     do_item_unlink(item, hv);
-    item_unlock(hv);
+//    item_unlock(hv);
 }
 
 /*
@@ -565,9 +565,9 @@ void item_update(item *item) {
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey, 0);
 
-    item_lock(hv);
+//    item_lock(hv);
     do_item_update(item);
-    item_unlock(hv);
+//    item_unlock(hv);
 }
 
 /*
@@ -581,9 +581,9 @@ enum delta_result_type add_delta(conn *c, const char *key,
     uint32_t hv;
 
     hv = hash(key, nkey, 0);
-    item_lock(hv);
+//    item_lock(hv);
     ret = do_add_delta(c, key, nkey, incr, delta, buf, cas, hv);
-    item_unlock(hv);
+//    item_unlock(hv);
     return ret;
 }
 
@@ -595,9 +595,9 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
     uint32_t hv;
 
     hv = hash(ITEM_key(item), item->nkey, 0);
-    item_lock(hv);
+//    item_lock(hv);
     ret = do_store_item(item, comm, c, hv);
-    item_unlock(hv);
+//    item_unlock(hv);
     return ret;
 }
 

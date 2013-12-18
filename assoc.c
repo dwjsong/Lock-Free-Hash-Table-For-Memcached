@@ -25,6 +25,14 @@
 #include <assert.h>
 #include <pthread.h>
 
+#define mark_bit(p) __atomic_store_n(&p, (struct _stritem *) ((uintptr_t)p | 1), __ATOMIC_SEQ_CST) 
+#define unmark_bit(p) __atomic_store_n(&p, (struct _stritem *) ((uintptr_t)p & ~1), __ATOMIC_SEQ_CST) 
+#define is_marked(p) ((uintptr_t)p & 1) 
+#define get_pointer(p) (struct _stritem *) ((uintptr_t)p & ~1)
+#define cas(p, v) __sync_bool_compare_and_swap(&p, p, v)
+#define increase(p) __atomic_fetch_add(&p, 1, __ATOMIC_SEQ_CST)
+#define decrease(p) __atomic_fetch_add(&p, -1, __ATOMIC_SEQ_CST)
+
 static pthread_cond_t maintenance_cond = PTHREAD_COND_INITIALIZER;
 
 
@@ -39,6 +47,7 @@ unsigned int hashpower = HASHPOWER_DEFAULT;
 
 /* Main hash table. This is where we look except during expansion. */
 static item** primary_hashtable = 0;
+
 
 /*
  * Previous hash table. During expansion, we look here for keys that haven't
@@ -86,18 +95,26 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
         it = primary_hashtable[hv & hashmask(hashpower)];
     }
 
-    item *ret = NULL;
-    int depth = 0;
-    while (it) {
-        if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
-            ret = it;
-            break;
+    bool again = true;
+    while (again) {
+        item *ret = NULL;
+        int depth = 0;
+        while (it) {
+            if (is_marked(it->h_next)) {
+                again = true;
+            }
+            if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
+                again = false;
+                ret = it;
+                MEMCACHED_ASSOC_FIND(key, nkey, depth);
+                return ret;
+            }
+            it = get_pointer(it->h_next);
+            ++depth;
         }
-        it = it->h_next;
-        ++depth;
+        
     }
-    MEMCACHED_ASSOC_FIND(key, nkey, depth);
-    return ret;
+    return NULL;
 }
 
 /* returns the address of the item pointer before the key.  if *item == 0,
@@ -116,7 +133,8 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
     }
 
     while (*pos && ((nkey != (*pos)->nkey) || memcmp(key, ITEM_key(*pos), nkey))) {
-        pos = &(*pos)->h_next;
+        pos = (struct _stritem **)((uintptr_t)(&(*pos)->h_next) & ~1);
+//        pos = get_pointer(&(*pos)->h_next);
     }
     return pos;
 }
@@ -154,19 +172,18 @@ static void assoc_start_expand(void) {
 int assoc_insert(item *it, const uint32_t hv) {
     unsigned int oldbucket;
 
-//    assert(assoc_find(ITEM_key(it), it->nkey) == 0);  /* shouldn't have duplicately named things defined */
-
     if (expanding &&
         (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
     {
         it->h_next = old_hashtable[oldbucket];
-        old_hashtable[oldbucket] = it;
+        cas(old_hashtable[oldbucket], it);
     } else {
         it->h_next = primary_hashtable[hv & hashmask(hashpower)];
-        primary_hashtable[hv & hashmask(hashpower)] = it;
+        /* If compare and swap fails, try again */
+        while (false == cas(primary_hashtable[hv & hashmask(hashpower)], it));
     }
 
-    hash_items++;
+    increase(hash_items);
     if (! expanding && hash_items > (hashsize(hashpower) * 3) / 2) {
         assoc_start_expand();
     }
@@ -176,23 +193,28 @@ int assoc_insert(item *it, const uint32_t hv) {
 }
 
 void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
-    item **before = _hashitem_before(key, nkey, hv);
+    while (true) {
+        item **before = _hashitem_before(key, nkey, hv);
 
-    if (*before) {
-        item *nxt;
-        hash_items--;
-        /* The DTrace probe cannot be triggered as the last instruction
-         * due to possible tail-optimization by the compiler
-         */
-        MEMCACHED_ASSOC_DELETE(key, nkey, hash_items);
-        nxt = (*before)->h_next;
-        (*before)->h_next = 0;   /* probably pointless, but whatever. */
-        *before = nxt;
-        return;
+        if (*before) {
+
+            /* Some other thread is erasing this node. */
+            if (is_marked(*before)) continue;
+
+            item *nxt;
+            decrease(hash_items);
+            /* The DTrace probe cannot be triggered as the last instruction
+             * due to possible tail-optimization by the compiler
+             */
+            MEMCACHED_ASSOC_DELETE(key, nkey, hash_items);
+            cas(nxt, get_pointer((*before)->h_next));
+
+            cas(*before, nxt);
+        }
+        else {
+            return;
+        }
     }
-    /* Note:  we never actually get here.  the callers don't delete things
-       they can't find. */
-    assert(*before != 0);
 }
 
 
@@ -216,7 +238,7 @@ static void *assoc_maintenance_thread(void *arg) {
             int bucket;
 
             for (it = old_hashtable[expand_bucket]; NULL != it; it = next) {
-                next = it->h_next;
+                next = get_pointer(it->h_next);
 
                 bucket = hash(ITEM_key(it), it->nkey, 0) & hashmask(hashpower);
                 it->h_next = primary_hashtable[bucket];
