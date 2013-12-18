@@ -97,6 +97,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 
     bool again = true;
     while (again) {
+        again = false;
         item *ret = NULL;
         int depth = 0;
         while (it) {
@@ -104,13 +105,14 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
                 again = true;
             }
             if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
-                again = false;
                 ret = it;
                 MEMCACHED_ASSOC_FIND(key, nkey, depth);
                 return ret;
             }
             it = get_pointer(it->h_next);
             ++depth;
+            if (again == false)
+                return NULL;
         }
         
     }
@@ -200,6 +202,7 @@ void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
 
             /* Some other thread is erasing this node. */
             if (is_marked(*before)) continue;
+            mark_bit(*before);
 
             item *nxt;
             decrease(hash_items);
