@@ -7,5 +7,11 @@
 
 ## Environment
 
-Tested On X86_64 Ubuntu 12.04 LTS
+Tested On x86_64 Ubuntu 12.04 LTS
 
+## Install Instructions
+
+export CC=gcc-4.7
+./configure
+make
+make install
