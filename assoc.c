@@ -28,7 +28,7 @@
 #define mark_bit(p) __atomic_store_n(&p, (struct _stritem *) ((uintptr_t)p | 1), __ATOMIC_SEQ_CST) 
 #define unmark_bit(p) __atomic_store_n(&p, (struct _stritem *) ((uintptr_t)p & ~1), __ATOMIC_SEQ_CST) 
 #define is_marked(p) ((uintptr_t)p & 1) 
-#define get_pointer(p) (struct _stritem *) ((uintptr_t)p & ~1)
+#define get_pointer(p) ((struct _stritem *) ((uintptr_t)p & ~1))
 #define cas(p, v) __sync_bool_compare_and_swap(&p, p, v)
 #define increase(p) __atomic_fetch_add(&p, 1, __ATOMIC_SEQ_CST)
 #define decrease(p) __atomic_fetch_add(&p, -1, __ATOMIC_SEQ_CST)
@@ -102,6 +102,8 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
         int depth = 0;
         while (it) {
             if (is_marked(it->h_next)) {
+                printf("find marked\n");
+                break;
                 again = true;
             }
             if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
@@ -111,8 +113,10 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
             }
             it = get_pointer(it->h_next);
             ++depth;
-            if (again == false)
+            if (again == false) {
+                printf("where\n");
                 return NULL;
+            }
         }
         
     }
@@ -122,21 +126,21 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 /* returns the address of the item pointer before the key.  if *item == 0,
    the item wasn't found */
 
-static item** _hashitem_before (const char *key, const size_t nkey, const uint32_t hv) {
-    item **pos;
+static item* _hashitem_before (const char *key, const size_t nkey, const uint32_t hv) {
+    item *pos;
     unsigned int oldbucket;
 
     if (expanding &&
         (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
     {
-        pos = &old_hashtable[oldbucket];
+        pos = old_hashtable[oldbucket];
     } else {
-        pos = &primary_hashtable[hv & hashmask(hashpower)];
+        pos = primary_hashtable[hv & hashmask(hashpower)];
     }
 
-    while (*pos && ((nkey != (*pos)->nkey) || memcmp(key, ITEM_key(*pos), nkey))) {
-        pos = (struct _stritem **)((uintptr_t)(&(*pos)->h_next) & ~1);
-//        pos = get_pointer(&(*pos)->h_next);
+    while (get_pointer(pos->h_next) && ((nkey != (get_pointer(pos->h_next))->nkey) || memcmp(key, ITEM_key(get_pointer(pos->h_next)), nkey))) {
+        pos = get_pointer(pos->h_next);
+//        pos = (struct _stritem **)(((uintptr_t)(&(*pos)->h_next)) & ~1);
     }
     return pos;
 }
@@ -196,27 +200,30 @@ int assoc_insert(item *it, const uint32_t hv) {
 
 void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
     while (true) {
-        item **before = _hashitem_before(key, nkey, hv);
+        item *before = _hashitem_before(key, nkey, hv);
 
-        if (*before) {
+        if (get_pointer(before->h_next)) {
 
             /* Some other thread is erasing this node. */
-            if (is_marked(*before)) continue;
-            mark_bit(*before);
+            if (is_marked(before)) {
+                break;
+                continue;
+            }
+            mark_bit(before->h_next);
 
-            item *nxt;
+//            item *nxt;
             decrease(hash_items);
             /* The DTrace probe cannot be triggered as the last instruction
              * due to possible tail-optimization by the compiler
              */
             MEMCACHED_ASSOC_DELETE(key, nkey, hash_items);
-            cas(nxt, get_pointer((*before)->h_next));
+//            cas(before->h_next, ((struct _stritem *) ((uintptr_t)get_pointer(before->h_next) & ~1))->h_next);
+            cas(before->h_next, get_pointer(get_pointer(before->h_next)->h_next));
+//            cas(nxt, get_pointer((before)->h_next));
 
-            cas(*before, nxt);
+//            cas(before, nxt);
         }
-        else {
-            return;
-        }
+        return;
     }
 }
 
